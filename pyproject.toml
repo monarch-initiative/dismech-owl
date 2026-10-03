@@ -1,0 +1,34 @@
+[project]
+name = "dismech-owl"
+version = "0.1.0"
+description = "OWL builds of the dismech pathograph knowledge base"
+readme = "README.md"
+requires-python = ">=3.12,<4.0"
+dependencies = [
+    "dismech",
+    "py-horned-owl>=2.0",
+    "pyyaml>=6",
+]
+
+[project.scripts]
+dismech-owl-tbox = "dismech_owl.tbox:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+# The dismech package and the kb/ the build reads come from the same checkout,
+# so the library can never be a different version from the data. `just
+# fetch-dismech` clones it at the commit pinned in DISMECH_REF.
+[tool.uv.sources]
+dismech = { path = "../dismech", editable = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dismech_owl"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
