@@ -102,6 +102,7 @@ from pyhornedowl.model import (
     ObjectUnionOf,
     SimpleLiteral,
     SubClassOf,
+    SubObjectPropertyOf,
 )
 
 BASE = "https://w3id.org/monarch-initiative/dismech/"
@@ -146,6 +147,26 @@ CONFIDENCE_RANK = {"LOW": 0, "MEDIUM": 1, "HIGH": 2}
 
 PATHO = "pathophysiology"
 PHENO = "phenotype"
+
+#: RO relations, each looked up in RO (`runoak -i sqlite:obo:ro labels ...`)
+#: rather than written from memory. IRI -> canonical label.
+RO = "http://purl.obolibrary.org/obo/RO_"
+RO_CAUSES_OR_CONTRIBUTES_TO_CONDITION = (RO + "0003302", "causes or contributes to condition")
+RO_PHENOTYPE_OF = (RO + "0002201", "phenotype of")
+RO_CAUSALLY_UPSTREAM_OF = (RO + "0002411", "causally upstream of")
+
+#: Node kind -> RO relation linking the node to its entry's disease term.
+#: The axiom sits on the node, not on the MONDO class: a node is a
+#: disease-specific class, so "every FA genomic instability contributes to some
+#: FA" is true, whereas "every FA case has every curated phenotype" is not.
+DISEASE_LINKS = {
+    PATHO: RO_CAUSES_OR_CONTRIBUTES_TO_CONDITION,
+    PHENO: RO_PHENOTYPE_OF,
+}
+
+#: Graph predicates whose edges are causal, declared sub-properties of
+#: RO 'causally upstream of' so RO-level queries reach them.
+CAUSAL_PREDICATES = ("causes", "leads_to")
 
 #: Endpoint resolution order for a bare-name edge target.
 RESOLUTION_ORDER = (PATHO, PHENO) + tuple(
@@ -236,10 +257,14 @@ class TBoxBuilder:
             ("obo", OBO),
         ):
             self.onto.add_prefix_mapping(pfx, ns)
-        for pfx in ("GO", "HP", "CL", "UBERON", "CHEBI", "MONDO", "ECTO", "PATO"):
+        self.onto.add_prefix_mapping("RO", RO)
+        if "hgnc" in prefixes:
+            self.onto.add_prefix_mapping("hgnc", prefixes["hgnc"])
+        for pfx in ("GO", "HP", "CL", "UBERON", "CHEBI", "MONDO", "ECTO", "PATO", "NCIT"):
             if pfx in prefixes:
                 self.onto.add_prefix_mapping(pfx, prefixes[pfx])
         self._declared: set[str] = set()
+        self._causal_declared: set[str] = set()
         self._props: dict[str, Any] = {}
         self._aprops: dict[str, Any] = {}
         self.label = self._aprop(RDFS + "label")
@@ -455,7 +480,13 @@ class TBoxBuilder:
         disease = (self._entries.get(rec.entry) or {}).get("disease_term") or {}
         disease_id = (disease.get("term") or {}).get("id")
         if disease_id:
-            self._annotate(rec.iri, self.is_part_of, self.expand(disease_id), as_iri=True)
+            disease_iri = self.expand(disease_id)
+            self._annotate(rec.iri, self.is_part_of, disease_iri, as_iri=True)
+            link = DISEASE_LINKS.get(rec.kind)
+            if link:
+                dcls = self._class(disease_iri, (disease.get("term") or {}).get("label"))
+                self.onto.add_axiom(SubClassOf(cls, ObjectSomeValuesFrom(self._prop(*link), dcls)))
+                self.stats.counts["disease_link_axioms"] += 1
         if item.get("description"):
             self._annotate(rec.iri, self.definition, " ".join(str(item["description"]).split()))
 
@@ -504,6 +535,9 @@ class TBoxBuilder:
                     self.stats.unresolved_targets.append((entry, str(edge.source), str(edge.target)))
                     continue
                 prop = self._prop(BASE + slugify(edge.predicate), edge.predicate.replace("_", " "))
+                if edge.predicate in CAUSAL_PREDICATES and edge.predicate not in self._causal_declared:
+                    self.onto.add_axiom(SubObjectPropertyOf(prop, self._prop(*RO_CAUSALLY_UPSTREAM_OF)))
+                    self._causal_declared.add(edge.predicate)
                 self.onto.add_axiom(SubClassOf(self.onto.class_(src.iri),
                                                ObjectSomeValuesFrom(prop, self.onto.class_(tgt.iri))))
                 self.stats.counts[f"edge_axioms_{edge.predicate}"] += 1

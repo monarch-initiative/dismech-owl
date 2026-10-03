@@ -740,6 +740,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "dismech" },
+    { name = "oaklib" },
     { name = "py-horned-owl" },
     { name = "pyyaml" },
 ]
@@ -753,6 +754,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "dismech", editable = "../dismech" },
+    { name = "oaklib", specifier = ">=0.7.4" },
     { name = "py-horned-owl", specifier = ">=2.0" },
     { name = "pyyaml", specifier = ">=6" },
 ]

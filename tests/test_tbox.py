@@ -205,3 +205,25 @@ def test_real_tree_parses_into_owl(tmp_path):
     builder = build(default_dismech_dir() / TREE_PATH, [empty])
     assert builder.stats.counts["tree_classes"] > 50
     assert builder.stats.counts["tree_definitions"] > 30
+
+
+def test_nodes_link_to_their_disease(toy_kb):
+    tree, root = toy_kb
+    _, ofn = _ofn(tree, root)
+    mondo = f"<{OBO}MONDO_0000001>"
+    assert (
+        f"SubClassOf(<{D}node/Toy_Disease/pathophysiology/Neuronal_Death> "
+        f"ObjectSomeValuesFrom(<{OBO}RO_0003302> {mondo}))"
+    ) in ofn
+    assert (
+        f"SubClassOf(<{D}node/Toy_Disease/phenotype/Seizures> "
+        f"ObjectSomeValuesFrom(<{OBO}RO_0002201> {mondo}))"
+    ) in ofn
+    # modules carry no disease term, so their nodes get no link
+    assert f"<{D}node/toy_module/pathophysiology/Cell_Loss> ObjectSomeValuesFrom(<{OBO}RO_0003302>" not in ofn
+
+
+def test_causal_predicates_are_ro_causally_upstream_of(toy_kb):
+    tree, root = toy_kb
+    _, ofn = _ofn(tree, root)
+    assert f"SubObjectPropertyOf(<{D}causes> <{OBO}RO_0002411>)" in ofn
