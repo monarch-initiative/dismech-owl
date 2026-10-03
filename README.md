@@ -68,11 +68,12 @@ and up MONDO's classification, with real output.
 
 ## Classification by reasoning
 
-The tree definitions are what make reasoning worthwhile. On the sample build
-(`just tbox-sample`, which includes every module), 73 of 943 pathophysiology
-nodes have an asserted tree class, from the tree's worked examples. After
-`just reason` merges a GO module and runs ELK, 426 do. Most of the inferred
-classes are signalling, cell death, organelle dysfunction and catalytic activity.
+dismech's node-class tree supplies the upper hierarchy, its worked examples are
+asserted, and its logical definitions become axioms a reasoner can use. On the
+full KB, 2,378 of 23,853 pathophysiology nodes have an asserted tree class;
+after `just reason` merges GO and MONDO modules and runs ELK (about 3 minutes),
+10,497 (44%) do, and 1,839 land in two or more tiers. Details and limits are in
+[`docs/exploring.md`](docs/exploring.md#classification-by-the-tree-definitions).
 
 ## Known limitations
 

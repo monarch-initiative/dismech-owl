@@ -227,3 +227,17 @@ def test_causal_predicates_are_ro_causally_upstream_of(toy_kb):
     tree, root = toy_kb
     _, ofn = _ofn(tree, root)
     assert f"SubObjectPropertyOf(<{D}causes> <{OBO}RO_0002411>)" in ofn
+
+
+def test_prefix_atoms_can_fire(toy_kb):
+    """`locations some UBERON` only matches if UBERON terms sit under the placeholder."""
+    tree, root = toy_kb
+    path = root / "disorders" / "Toy_Disease.yaml"
+    path.write_text(path.read_text().replace(
+        "  downstream:\n",
+        "  locations:\n  - preferred_term: brain\n    term:\n      id: UBERON:0000955\n      label: brain\n  downstream:\n",
+    ))
+    _, ofn = _ofn(tree, root)
+    assert f"SubClassOf(<{OBO}UBERON_0000955> <{D}AnyTerm/UBERON>)" in ofn
+    # a GO term is not under the UBERON placeholder
+    assert f"SubClassOf(<{OBO}GO_0008219> <{D}AnyTerm/UBERON>)" not in ofn

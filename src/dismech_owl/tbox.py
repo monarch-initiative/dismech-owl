@@ -265,6 +265,8 @@ class TBoxBuilder:
                 self.onto.add_prefix_mapping(pfx, prefixes[pfx])
         self._declared: set[str] = set()
         self._causal_declared: set[str] = set()
+        self._term_prefixes: dict[str, str] = {}
+        self._any_term_prefixes: set[str] = set()
         self._props: dict[str, Any] = {}
         self._aprops: dict[str, Any] = {}
         self.label = self._aprop(RDFS + "label")
@@ -322,7 +324,9 @@ class TBoxBuilder:
         return cls
 
     def term_class(self, curie: str, label: str | None = None) -> Any:
-        return self._class(self.expand(curie), label)
+        iri = self.expand(curie)
+        self._term_prefixes.setdefault(iri, curie.partition(":")[0].upper())
+        return self._class(iri, label)
 
     def slot_prop(self, slot: str) -> Any:
         return self._prop(BASE + slot, slot)
@@ -341,7 +345,19 @@ class TBoxBuilder:
 
     def any_term_class(self, prefix: str) -> Any:
         """Placeholder for ``some PREFIX``: any term drawn from that ontology."""
+        self._any_term_prefixes.add(prefix.upper())
         return self._class(f"{BASE}AnyTerm/{prefix.upper()}", f"any {prefix.upper()} term")
+
+    def link_any_term_placeholders(self) -> None:
+        """Assert every referenced term under its prefix's placeholder.
+
+        Without this a ``some PREFIX`` definition can never fire: nothing says
+        that ECTO:0000537 is an ECTO term. Call once all terms are declared.
+        """
+        for iri, prefix in self._term_prefixes.items():
+            if prefix in self._any_term_prefixes:
+                self.onto.add_axiom(SubClassOf(self.onto.class_(iri), self.any_term_class(prefix)))
+                self.stats.counts["any_term_axioms"] += 1
 
     def filler(self, term: str | Any, modifiers: Iterable[str]) -> Any:
         base = term if not isinstance(term, str) else self.term_class(term)
@@ -605,6 +621,7 @@ def build(
         builder.stats.counts[f"nodes_{rec.kind}"] += 1
     builder.add_edges(records)
     builder.add_examples(roots, records)
+    builder.link_any_term_placeholders()
     if scan:
         if seed_path is None:
             raise ValueError("scan=True needs seed_path")

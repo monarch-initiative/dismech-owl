@@ -56,16 +56,25 @@ the reasoner from the tree's logical definitions; see
 
 ```console
 $ runoak -i $R relationships dismech:node/Dyskeratosis_Congenita/pathophysiology/Impaired_Telomere_Maintenance
-predicate                  object                                   object_label
-rdfs:subClassOf            dnc:GENOMIC_EFFECT__GENOME_INSTABILITY   genome instability
-RO:0003302                 MONDO:0015780                            dyskeratosis congenita
-dismech:cellular_components GO:0005697                              telomerase holoenzyme complex
-dismech:molecular_functions GO:0070034                              telomerase RNA binding
-dismech:cell_types         CL:0000037                               hematopoietic stem cell
-dismech:genes              hgnc:11824                               TINF2
-dismech:genes              hgnc:25522                               WRAP53
+predicate                   object                                   object_label
+rdfs:subClassOf             dnc:GENOMIC_EFFECT__GENOME_INSTABILITY   genome instability
+rdfs:subClassOf             dnc:MOLECULAR_ACTIVITY_EFFECT            MOLECULAR ACTIVITY EFFECT
+RO:0003302                  MONDO:0015780                            dyskeratosis congenita
+dismech:causes              dismech:node/Dyskeratosis_Congenita/pathophysiology/Critically_Short_Telomeres_and_Replicative_Senescence
+dismech:cellular_components GO:0005697                               telomerase holoenzyme complex
+dismech:molecular_functions GO:0070034                               telomerase RNA binding
+dismech:cell_types          CL:0000037                               hematopoietic stem cell
+dismech:genes               hgnc:11824                               TINF2
+dismech:genes               hgnc:25522                               WRAP53
 ...
 ```
+
+The first `rdfs:subClassOf` is asserted: the node-class tree cites this node
+as a *genome instability* example. The second is inferred: the tree defines
+MOLECULAR ACTIVITY EFFECT as `molecular_functions some GO`, and this node
+carries *telomerase RNA binding*. A node in two tiers is what the tree calls a
+debundle candidate, a node making two claims at once (see
+[Classification](#classification-by-the-tree-definitions)).
 
 Three kinds of edge show up here:
 
@@ -211,9 +220,56 @@ runoak -i $R viz -p i,RO:0003302 --max-hops 5 --no-view -o docs/images/fanconi-h
 
 ## Classification by the tree definitions
 
-The node-class tree's `=` definitions are sufficient conditions over a node's
-descriptors (`biological_processes some GO:0008219 'cell death'` and so on).
-Once the GO module is merged, ELK uses them, together with GO's hierarchy, to
-place nodes that the tree never mentions. On the sample of every module plus
-Fanconi anemia, 73 of 943 pathophysiology nodes have an asserted tree class;
-after reasoning, 426 do.
+dismech's node-class tree (`kb/node_classes/pathograph_node_classes.txt`) is
+used in four ways:
+
+1. **Its classes are the upper hierarchy** for pathophysiology nodes: 101
+   classes under `dismech:PathophysiologyNode`, glosses as `skos:definition`,
+   `:key` attributes as `rdfs:comment`.
+2. **Its worked examples are asserted.** All 2,185 `[Entry] Node` lines resolve
+   to a node and become `SubClassOf` the class citing them.
+3. **Its 46 `=` definitions become GCIs**, so a reasoner can place nodes the
+   tree never mentions. `some PREFIX` atoms (`triggers some ECTO`) go through
+   an "any ECTO term" placeholder, with every referenced term asserted under
+   its prefix's placeholder.
+4. **Optionally (`--scan`), the GO seed table**, applied through dismech's own
+   scanner and asserted at the tier level. It is off by default because the
+   scanner is a worklist, not reviewed claims.
+
+On the full KB (`just tbox`, then `just reason` with GO and MONDO modules;
+about 3 minutes):
+
+| | Pathophysiology nodes with a tree class (of 23,853) | in two or more tiers |
+|---|---:|---:|
+| asserted (examples, plus `conforms_to` to a cited module node) | 2,378 | 15 |
+| after ELK | 10,497 (44%) | 1,839 |
+
+| Tier | asserted | after ELK |
+|---|---:|---:|
+| CELLULAR EFFECT | 378 | 3,425 |
+| PATHWAY EFFECT | 130 | 2,232 |
+| MOLECULAR ACTIVITY EFFECT | 195 | 2,195 |
+| TISSUE / ORGAN EFFECT | 693 | 1,896 |
+| MOLECULAR SUBSTANCE EFFECT | 175 | 1,245 |
+| GENOMIC EFFECT | 246 | 792 |
+| SYSTEMIC EFFECT | 164 | 397 |
+| OUTCOME | 108 | 108 |
+| ENVIRONMENTAL EFFECT | 64 | 72 |
+| DISPOSITION | 55 | 55 |
+
+What limits it:
+
+- **Classes without a definition only ever hold their examples.** OUTCOME,
+  DISPOSITION and the compensation and intervention-point classes are
+  judgement classes in the tree, deliberately undefined, so their counts do
+  not move.
+- **`not` atoms cannot fire under the open-world assumption.** *Systemic
+  inflammatory state* is defined as `inflammatory response … and not
+  locations some UBERON`; a node without a location is not known to lack one,
+  so the reasoner never places a node there.
+- **ENVIRONMENTAL EFFECT barely moves** because few pathophysiology nodes use
+  the `triggers` slot its definition reads. Exposures mostly connect through
+  `environmental[].influences_mechanisms` edges (`dismech:triggers` in this
+  TBox), which the definition does not consider.
+- **The 1,839 nodes in two or more tiers** are the tree's own debundle signal,
+  ready to export as a worklist.
