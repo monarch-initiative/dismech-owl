@@ -13,6 +13,7 @@ dependencies = [
 
 [project.scripts]
 dismech-owl-tbox = "dismech_owl.tbox:main"
+dismech-owl-release = "dismech_owl.release:main"
 
 [dependency-groups]
 dev = ["pytest>=8", "ruff>=0.6"]

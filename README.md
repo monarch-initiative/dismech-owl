@@ -27,11 +27,34 @@ just tbox-sample        # a few entries, seconds
 just tbox               # the whole KB, ~1 min, ~200 MB OFN
 just reason             # merge GO and MONDO modules and classify with ELK (needs Java)
 just example            # the sample docs/exploring.md is written against
+just release            # what the weekly workflow runs: tbox + reason + dist
 just pin-dismech        # repin DISMECH_REF to ../dismech's HEAD
 ```
 
 Set `DISMECH_DIR` to use a checkout somewhere other than `../dismech`. The
 `[tool.uv.sources]` path in `pyproject.toml` assumes `../dismech` too.
+
+## Releases
+
+A [weekly workflow](.github/workflows/release.yaml) (Mondays, 10:41 UTC)
+resolves dismech `main` to an exact commit, runs the tests against it, and runs
+`just release`. That builds the full TBox, reasons over it with GO and MONDO
+modules, and packages the result into `build/dist/`. Each run publishes a
+GitHub release tagged `vYYYY-MM-DD` with:
+
+| Asset | Contents |
+|---|---|
+| `dismech-pathograph.ofn.gz` | the TBox as built (about 21 MB gzipped, 200 MB unpacked) |
+| `dismech-pathograph-reasoned.ofn.gz` | merged with GO and MONDO modules and classified with ELK (about 25 MB / 280 MB) |
+| `manifest.json` | the dismech and dismech-owl commits, build counts, file sizes and sha256s |
+
+The same files are kept as a workflow artifact for 90 days. A week in which
+neither dismech nor dismech-owl changed publishes no release. A manual run
+(Actions → Weekly release → Run workflow) defaults to a dry run that only
+uploads the artifact. Its inputs pick a dismech ref, publish for real, or force
+a release over an identical one.
+
+Releases track dismech `main`. `DISMECH_REF` pins only what CI tests against.
 
 ## What the TBox contains
 

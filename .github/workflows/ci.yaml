@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: dismech-owl
+          persist-credentials: false
+      - name: Read pinned dismech commit
+        id: ref
+        run: echo "sha=$(cat dismech-owl/DISMECH_REF)" >> "$GITHUB_OUTPUT"
+      # Sibling checkout, so the ../dismech path source in pyproject.toml resolves.
+      # Only src/ and kb/ are needed; references_cache/ and pages/ are skipped.
+      - uses: actions/checkout@v6
+        with:
+          repository: monarch-initiative/dismech
+          ref: ${{ steps.ref.outputs.sha }}
+          path: dismech
+          sparse-checkout: |
+            src
+            kb
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v7
+      - name: Install
+        working-directory: dismech-owl
+        run: uv sync --frozen
+      - name: Lint
+        working-directory: dismech-owl
+        run: uv run ruff check src tests
+      - name: Unit tests
+        working-directory: dismech-owl
+        env:
+          DISMECH_DIR: ../dismech
+        run: uv run pytest -q
+      - name: Smoke build (one entry, all modules)
+        working-directory: dismech-owl
+        run: uv run dismech-owl-tbox --dismech-dir ../dismech --entry Fanconi_Anemia -o build/smoke.ofn
+      - name: Lint workflows
+        working-directory: dismech-owl
+        run: uvx --from actionlint-py actionlint .github/workflows/*.yaml
