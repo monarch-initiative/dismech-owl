@@ -69,10 +69,11 @@ dismech:genes               hgnc:25522                               WRAP53
 ...
 ```
 
-The first `rdfs:subClassOf` is asserted: the node-class tree cites this node
-as a *genome instability* example. The second is inferred: the tree defines
-MOLECULAR ACTIVITY EFFECT as `molecular_functions some GO`, and this node
-carries *telomerase RNA binding*. A node in two tiers is what the tree calls a
+Both `rdfs:subClassOf` edges are inferred by the reasoner from the tree's
+definitions; the tree does not cite this node. *Genome instability* matches
+because the node carries `telomere maintenance` with modifier DECREASED.
+MOLECULAR ACTIVITY EFFECT, defined as `molecular_functions some GO`, matches
+because the node carries *telomerase RNA binding*. A node in two tiers is what the tree calls a
 debundle candidate, a node making two claims at once (see
 [Classification](#classification-by-the-tree-definitions)).
 
@@ -235,6 +236,33 @@ used in four ways:
 4. **Optionally (`--scan`), the GO seed table**, applied through dismech's own
    scanner and asserted at the tier level. It is off by default because the
    scanner is a worklist, not reviewed claims.
+
+Six nodes from the sample, from four diseases, placed in the tree. Two are
+placed by the tree's worked examples: *Genomic Instability* and *Bone Marrow
+Failure* (Fanconi anemia). The other four are placed by the reasoner from their
+descriptors. *Impaired Telomere Maintenance* lands in two tiers:
+
+```bash
+P=dismech:node
+runoak -i $R viz -p i --no-view -o docs/images/node-classes.png \
+  $P/Fanconi_Anemia/pathophysiology/Genomic_Instability \
+  $P/Fanconi_Anemia/pathophysiology/Bone_Marrow_Failure \
+  $P/Fanconi_Anemia/pathophysiology/Core_Complex_Dysfunction \
+  $P/Dyskeratosis_Congenita/pathophysiology/Impaired_Telomere_Maintenance \
+  $P/Dyskeratosis_Congenita/pathophysiology/Thymidylate_Synthase_Deficiency \
+  $P/Diamond-Blackfan_Anemia/pathophysiology/Ribosomal_Protein_Nuclear_Import_Failure
+```
+
+![Six pathophysiology nodes placed in the node-class tree](images/node-classes.png)
+
+| Node | Tree class | How |
+|---|---|---|
+| Genomic Instability (FA) | genome instability | asserted (tree example) |
+| Bone Marrow Failure (FA) | organ failure | asserted (tree example) |
+| Core Complex Dysfunction (FA) | post-translational modification state | inferred from its GO process |
+| Impaired Telomere Maintenance (DC) | genome instability + MOLECULAR ACTIVITY EFFECT | inferred: `telomere maintenance` DECREASED; *telomerase RNA binding* |
+| Thymidylate Synthase Deficiency (DC) | catalytic activity | inferred from its GO function |
+| Ribosomal Protein Nuclear Import Failure (DBA) | protein trafficking and localization | inferred from its GO process |
 
 On the full KB (`just tbox`, then `just reason` with GO and MONDO modules;
 about 3 minutes):
