@@ -72,6 +72,7 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import json
 import os
 import re
 import subprocess
@@ -648,6 +649,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--min-confidence", choices=list(CONFIDENCE_RANK), default="HIGH",
                     help="lowest scanner confidence to assert with --scan (default HIGH)")
     ap.add_argument("--seed", type=Path, help="GO seed table (default: the checkout's)")
+    ap.add_argument("--stats-json", type=Path, help="also write the build counts to this JSON file")
     args = ap.parse_args(argv)
     suffix = args.output.suffix.lower()
     dismech_dir = args.dismech_dir or default_dismech_dir()
@@ -656,8 +658,9 @@ def main(argv: list[str] | None = None) -> int:
     if not tree.is_file():
         ap.error(f"no node-class tree at {tree}: pass --dismech-dir or set DISMECH_DIR")
 
+    source_commit = git_commit(dismech_dir)
     builder = build(tree, kb_dirs, scan=args.scan, seed_path=args.seed or dismech_dir / SEED_PATH,
-                    min_confidence=args.min_confidence, source_commit=git_commit(dismech_dir),
+                    min_confidence=args.min_confidence, source_commit=source_commit,
                     entry_globs=args.entries)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     serialization = {".owl": "rdf", ".rdf": "rdf", ".owx": "owx", ".ofn": "ofn"}.get(suffix, "rdf")
@@ -670,7 +673,22 @@ def main(argv: list[str] | None = None) -> int:
     print(f"unresolved tree examples: {len(s.unresolved_examples)}", file=sys.stderr)
     print(f"unresolved conforms_to: {len(s.unresolved_conforms_to)}", file=sys.stderr)
     print(f"wrote {args.output}", file=sys.stderr)
+    if args.stats_json:
+        args.stats_json.parent.mkdir(parents=True, exist_ok=True)
+        args.stats_json.write_text(json.dumps(stats_dict(builder, source_commit), indent=2, sort_keys=True) + "\n")
     return 0
+
+
+def stats_dict(builder: TBoxBuilder, source_commit: str | None) -> dict[str, Any]:
+    """The build's counts, as the release manifest records them."""
+    s = builder.stats
+    return {
+        "dismech_commit": source_commit,
+        "counts": dict(sorted(s.counts.items())),
+        "unresolved_edges": len(s.unresolved_targets),
+        "unresolved_tree_examples": len(s.unresolved_examples),
+        "unresolved_conforms_to": len(s.unresolved_conforms_to),
+    }
 
 
 if __name__ == "__main__":

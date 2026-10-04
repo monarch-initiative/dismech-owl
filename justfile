@@ -39,7 +39,8 @@ lint:
 # The TBox: every pathograph node a class, under the node-class tree
 tbox *args:
     mkdir -p {{build}}
-    uv run dismech-owl-tbox --dismech-dir {{dismech_dir}} -o {{build}}/dismech-pathograph.ofn {{args}}
+    uv run dismech-owl-tbox --dismech-dir {{dismech_dir}} -o {{build}}/dismech-pathograph.ofn \
+        --stats-json {{build}}/dismech-pathograph.stats.json {{args}}
 
 # Quick build over a few entries, for development
 tbox-sample pattern="Fanconi*":
@@ -88,5 +89,14 @@ reason input=(build + "/sample.ofn") out=(build + "/reasoned.ofn"): (modules inp
         reason --reasoner ELK --axiom-generators "SubClass" --exclude-tautologies structural \
         --output {{out}}
 
-# Release: full TBox, reasoned
-release: tbox (reason build + "/dismech-pathograph.ofn" build + "/dismech-pathograph-reasoned.ofn")
+# Release: full TBox, reasoned, then packaged into build/dist/
+release: tbox (reason build + "/dismech-pathograph.ofn" build + "/dismech-pathograph-reasoned.ofn") dist
+
+# Gzip the release files into build/dist/ and write manifest.json and
+# release-notes.md beside them (what the weekly workflow publishes)
+dist:
+    rm -rf {{build}}/dist && mkdir -p {{build}}/dist
+    gzip -c {{build}}/dismech-pathograph.ofn > {{build}}/dist/dismech-pathograph.ofn.gz
+    gzip -c {{build}}/dismech-pathograph-reasoned.ofn > {{build}}/dist/dismech-pathograph-reasoned.ofn.gz
+    uv run dismech-owl-release --dismech-dir {{dismech_dir}} --dist {{build}}/dist \
+        --stats {{build}}/dismech-pathograph.stats.json

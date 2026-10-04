@@ -241,3 +241,16 @@ def test_prefix_atoms_can_fire(toy_kb):
     assert f"SubClassOf(<{OBO}UBERON_0000955> <{D}AnyTerm/UBERON>)" in ofn
     # a GO term is not under the UBERON placeholder
     assert f"SubClassOf(<{OBO}GO_0008219> <{D}AnyTerm/UBERON>)" not in ofn
+
+
+def test_cli_writes_stats_json(toy_kb, tmp_path):
+    import json
+
+    tree, root = toy_kb
+    stats = tmp_path / "stats.json"
+    assert main(["-o", str(tmp_path / "out.ofn"), "--tree", str(tree), "--stats-json", str(stats),
+                 "--kb-dir", str(root / "disorders"), "--kb-dir", str(root / "modules")]) == 0
+    data = json.loads(stats.read_text())
+    assert data["counts"]["nodes_phenotype"] == 1
+    assert data["unresolved_edges"] == 1
+    assert "dismech_commit" in data

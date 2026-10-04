@@ -1,0 +1,132 @@
+name: Weekly release
+
+# Builds the TBox from the current head of dismech main, reasons over it with
+# GO and MONDO modules, and publishes both OWL files as a GitHub release.
+# Every run also keeps them as a workflow artifact for 90 days. A manual run
+# defaults to a dry run (artifact only).
+
+on:
+  schedule:
+    - cron: '41 10 * * 1'
+  workflow_dispatch:
+    inputs:
+      dismech_ref:
+        description: dismech branch, tag or commit to build from
+        type: string
+        default: main
+      dry_run:
+        description: Build and upload the artifact only (no GitHub release)
+        type: boolean
+        default: true
+      force:
+        description: Release even if the latest release was built from the same commits
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: weekly-release
+  cancel-in-progress: false
+
+env:
+  DISMECH_REPOSITORY: monarch-initiative/dismech
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    outputs:
+      dismech_sha: ${{ steps.resolve.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: dismech-owl
+          persist-credentials: false
+      - name: Resolve the dismech ref to an exact commit
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ inputs.dismech_ref || 'main' }}
+        run: |
+          sha=$(gh api "repos/$DISMECH_REPOSITORY/commits/$REF" --jq .sha)
+          if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Could not resolve dismech ref '$REF' to a commit"
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Building from $DISMECH_REPOSITORY@$sha ($REF)" >> "$GITHUB_STEP_SUMMARY"
+      # The release tracks dismech main, not DISMECH_REF: DISMECH_REF pins what
+      # CI tests against, the release is a snapshot of the KB as it is now.
+      - uses: actions/checkout@v6
+        with:
+          repository: ${{ env.DISMECH_REPOSITORY }}
+          ref: ${{ steps.resolve.outputs.sha }}
+          path: dismech
+          sparse-checkout: |
+            src
+            kb
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      # Not --frozen: uv.lock was resolved against DISMECH_REF, and dismech main
+      # may have changed its own dependencies since.
+      - name: Install
+        working-directory: dismech-owl
+        run: uv sync
+      - name: Unit tests against this dismech commit
+        working-directory: dismech-owl
+        env:
+          DISMECH_DIR: ../dismech
+        run: uv run pytest -q
+      - name: Build, reason and package
+        working-directory: dismech-owl
+        env:
+          ROBOT_MEM: 10G
+        run: uvx --from rust-just just release
+      - name: Summary
+        working-directory: dismech-owl
+        run: cat build/dist/release-notes.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dismech-owl-release
+          path: dismech-owl/build/dist/
+          if-no-files-found: error
+          retention-days: 90
+
+  publish:
+    needs: build
+    if: github.ref == 'refs/heads/main' && inputs.dry_run != true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dismech-owl-release
+          path: dist
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE: ${{ inputs.force || false }}
+        run: |
+          dm=$(jq -r .dismech_commit dist/manifest.json)
+          ow=$(jq -r .dismech_owl_commit dist/manifest.json)
+          latest=$(gh release view --repo "$GITHUB_REPOSITORY" --json body --jq .body 2>/dev/null || true)
+          if [[ "$FORCE" != true ]] && grep -qx "dismech: $dm" <<<"$latest" && grep -qx "dismech-owl: $ow" <<<"$latest"; then
+            echo "Latest release was already built from dismech $dm and dismech-owl $ow; nothing to release." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          tag="v$(date -u +%Y-%m-%d)"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/*.gz dist/manifest.json --repo "$GITHUB_REPOSITORY" --clobber
+            gh release edit "$tag" --notes-file dist/release-notes.md --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$tag" dist/*.gz dist/manifest.json --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" --title "dismech-owl $tag" --notes-file dist/release-notes.md
+          fi
+          echo "Published [$tag]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$tag)" >> "$GITHUB_STEP_SUMMARY"
