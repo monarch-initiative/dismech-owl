@@ -24,8 +24,9 @@ just fetch-dismech      # clone dismech at DISMECH_REF into ../dismech
 just install            # uv sync (dismech is an editable path dependency)
 just test
 just tbox-sample        # a few entries, seconds
-just tbox               # the whole KB, ~3 min, ~200 MB RDF/XML
-just reason             # merge a GO module and classify with ELK (needs Java)
+just tbox               # the whole KB, ~1 min, ~200 MB OFN
+just reason             # merge GO and MONDO modules and classify with ELK (needs Java)
+just example            # the sample docs/exploring.md is written against
 just pin-dismech        # repin DISMECH_REF to ../dismech's HEAD
 ```
 
@@ -44,27 +45,44 @@ Set `DISMECH_DIR` to use a checkout somewhere other than `../dismech`. The
 | `conforms_to: module#Node` | `<node> SubClassOf <module node>` |
 | phenotype / exposure / treatment term | `<node> SubClassOf <HP / ECTO / NCIT term>` |
 | gene / biomarker term | `<node> SubClassOf gene_term some …` / `biomarker_term some …` |
-| graph edge (`causes`, `treats`, `models` …) | `<source> SubClassOf <predicate> some <target>` |
+| graph edge (`causes`, `treats`, `models` …) | `<source> SubClassOf <predicate> some <target>`; `causes` and `leads_to` are sub-properties of RO 'causally upstream of' |
+| the entry's MONDO disease term | pathophysiology node `SubClassOf RO:0003302 some <disease>`; phenotype node `SubClassOf RO:0002201 some <disease>` |
 | `--scan` (off by default) | the node-class scanner's candidate tier, asserted |
 
 Node IRIs are stable as long as the entry slug and node name are stable.
 A slug collision inside one entry gets `_2`, `_3` in file order.
 
+## Browsing it with OAK
+
+OAK is a dependency, and reads the OFN build through its py-horned-owl backed
+`funowl:` adapter:
+
+```bash
+runoak -i funowl:build/bmf-reasoned.ofn tree -p i,RO:0003302 \
+  dismech:node/Fanconi_Anemia/pathophysiology/Homologous_Recombination_Impairment
+```
+
+[`docs/exploring.md`](docs/exploring.md) walks through is-a, the non-is-a
+edges, causal chains, `viz` and the path from a mechanism back to its disease
+and up MONDO's classification, with real output.
+
 ## Classification by reasoning
 
-The tree definitions are what make reasoning worthwhile. On the sample build
-(`just tbox-sample`, which includes every module), 73 of 943 pathophysiology
-nodes have an asserted tree class, from the tree's worked examples. After
-`just reason` merges a GO module and runs ELK, 426 do. Most of the inferred
-classes are signalling, cell death, organelle dysfunction and catalytic activity.
+dismech's node-class tree supplies the upper hierarchy, its worked examples are
+asserted, and its logical definitions become axioms a reasoner can use. On the
+full KB, 2,378 of 23,853 pathophysiology nodes have an asserted tree class;
+after `just reason` merges GO and MONDO modules and runs ELK (about 3 minutes),
+10,497 (44%) do, and 1,839 land in two or more tiers. Details and limits are in
+[`docs/exploring.md`](docs/exploring.md#classification-by-the-tree-definitions).
 
 ## Known limitations
 
-- Object properties are in the dismech namespace rather than RO. They have not
-  been mapped yet.
-- External ontologies are referenced, not imported. `just reason` merges a GO
-  BOT module so that the tree definitions classify nodes through the GO
-  hierarchy; HP, CL and UBERON are not merged yet.
+- Most object properties are in the dismech namespace. Only the disease links
+  and the `causes` / `leads_to` sub-property axioms use RO so far; each RO term
+  was looked up with `runoak -i sqlite:obo:ro`.
+- External ontologies are referenced, not imported. `just reason` merges GO and
+  MONDO BOT modules; HP, CL and UBERON are not merged yet.
+- OAK's label search (`l~…`) is very slow on this adapter. Query by CURIE.
 - py-horned-owl must be 2.0 or later. The 1.4 functional-syntax writer panics
   on a literal that contains a `"` followed later by a multi-byte character,
   and dismech descriptions contain such literals.

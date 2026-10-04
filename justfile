@@ -39,12 +39,20 @@ lint:
 # The TBox: every pathograph node a class, under the node-class tree
 tbox *args:
     mkdir -p {{build}}
-    uv run dismech-owl-tbox --dismech-dir {{dismech_dir}} -o {{build}}/dismech-pathograph.owl {{args}}
+    uv run dismech-owl-tbox --dismech-dir {{dismech_dir}} -o {{build}}/dismech-pathograph.ofn {{args}}
 
 # Quick build over a few entries, for development
 tbox-sample pattern="Fanconi*":
     mkdir -p {{build}}
-    uv run dismech-owl-tbox --dismech-dir {{dismech_dir}} --entry '{{pattern}}' -o {{build}}/sample.owl
+    uv run dismech-owl-tbox --dismech-dir {{dismech_dir}} --entry '{{pattern}}' -o {{build}}/sample.ofn
+
+# The sample docs/exploring.md is written against: five inherited bone marrow
+# failure entries (plus all modules), GO and MONDO modules merged, reasoned.
+example:
+    mkdir -p {{build}}
+    uv run dismech-owl-tbox --dismech-dir {{dismech_dir}} --entry 'Fanconi_Anemia' --entry 'Diamond-Blackfan*' \
+        --entry 'Dyskeratosis*' --entry '*Shwachman*' --entry 'Inherited_Aplastic_Anemia' -o {{build}}/bmf.ofn
+    just reason {{build}}/bmf.ofn {{build}}/bmf-reasoned.ofn
 
 # Download ROBOT (once) into tools/
 robot:
@@ -56,15 +64,29 @@ go:
     @test -f {{build}}/go.owl || (mkdir -p {{build}} && curl -fsSL -o {{build}}/go.owl \
         http://purl.obolibrary.org/obo/go.owl)
 
-# Merge in GO and the HP/CL/UBERON/CHEBI terms the TBox references, as a
-# BOT module of each, then reason with ELK. Input defaults to the sample build.
-reason input=(build + "/sample.owl") out=(build + "/reasoned.owl"): robot go
+# Download MONDO (base, no imports; once) into build/
+mondo:
+    @test -f {{build}}/mondo-base.owl || (mkdir -p {{build}} && curl -fsSL -o {{build}}/mondo-base.owl \
+        http://purl.obolibrary.org/obo/mondo/mondo-base.owl)
+
+# BOT modules of GO and MONDO holding just the terms <input> references,
+# so the merged file carries their is-a ancestry and labels.
+modules input=(build + "/sample.ofn"): robot go mondo
     {{robot}} extract --method BOT --input {{build}}/go.owl \
-        --term-file <(grep -o 'http://purl.obolibrary.org/obo/GO_[0-9]*' {{input}} | sort -u) \
+        --term-file <(grep -o 'http://purl.obolibrary.org/obo/GO_[0-9]*\|obo:GO_[0-9]*\|GO:[0-9]\{7\}' {{input}} \
+            | sed 's|^obo:GO_|GO:|; s|^http://purl.obolibrary.org/obo/GO_|GO:|' | sort -u) \
         --output {{build}}/go-module.owl
-    {{robot}} merge --input {{input}} --input {{build}}/go-module.owl \
+    {{robot}} extract --method BOT --input {{build}}/mondo-base.owl \
+        --term-file <(grep -o 'http://purl.obolibrary.org/obo/MONDO_[0-9]*\|obo:MONDO_[0-9]*\|MONDO:[0-9]\{7\}' {{input}} \
+            | sed 's|^obo:MONDO_|MONDO:|; s|^http://purl.obolibrary.org/obo/MONDO_|MONDO:|' | sort -u) \
+        --output {{build}}/mondo-module.owl
+
+# Merge the GO and MONDO modules into <input> and classify with ELK.
+# Writes OFN so OAK sees the prefix declarations.
+reason input=(build + "/sample.ofn") out=(build + "/reasoned.ofn"): (modules input)
+    {{robot}} merge --input {{input}} --input {{build}}/go-module.owl --input {{build}}/mondo-module.owl \
         reason --reasoner ELK --axiom-generators "SubClass" --exclude-tautologies structural \
         --output {{out}}
 
 # Release: full TBox, reasoned
-release: tbox (reason build + "/dismech-pathograph.owl" build + "/dismech-pathograph-reasoned.owl")
+release: tbox (reason build + "/dismech-pathograph.ofn" build + "/dismech-pathograph-reasoned.ofn")
