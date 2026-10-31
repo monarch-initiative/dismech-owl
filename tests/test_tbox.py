@@ -254,3 +254,4 @@ def test_cli_writes_stats_json(toy_kb, tmp_path):
     assert data["counts"]["nodes_phenotype"] == 1
     assert data["unresolved_edges"] == 1
     assert "dismech_commit" in data
+    assert data["unresolved_tree_example_list"] == []

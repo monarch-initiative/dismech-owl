@@ -687,6 +687,7 @@ def stats_dict(builder: TBoxBuilder, source_commit: str | None) -> dict[str, Any
         "counts": dict(sorted(s.counts.items())),
         "unresolved_edges": len(s.unresolved_targets),
         "unresolved_tree_examples": len(s.unresolved_examples),
+        "unresolved_tree_example_list": sorted([entry, node] for entry, node in s.unresolved_examples),
         "unresolved_conforms_to": len(s.unresolved_conforms_to),
     }
 

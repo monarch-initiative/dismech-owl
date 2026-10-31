@@ -26,7 +26,7 @@ from typing import Any
 from dismech_owl.tbox import default_dismech_dir, git_commit
 
 DISMECH_REPO = "https://github.com/monarch-initiative/dismech"
-OWL_REPO = "https://github.com/cmungall/dismech-owl"
+OWL_REPO = "https://github.com/monarch-initiative/dismech-owl"
 
 #: Release file name -> what it is. Files not listed here are still shipped,
 #: just without a description.
@@ -118,7 +118,22 @@ def render_notes(manifest: dict[str, Any]) -> str:
     for key, label in HEADLINE_COUNTS:
         if key in counts:
             lines.append(f"- {counts[key]:,} {label}")
-    lines.append(f"- {manifest['stats'].get('unresolved_edges', 0):,} graph edges whose target did not resolve")
+    stats = manifest["stats"]
+    lines.append(f"- {stats.get('unresolved_edges', 0):,} graph edges whose target did not resolve")
+    missing = stats.get("unresolved_tree_example_list") or []
+    n_missing = stats.get("unresolved_tree_examples", len(missing))
+    lines.append(f"- {n_missing:,} node-class tree examples that no longer match a node")
+    if missing:
+        lines += [
+            "",
+            "## Tree examples that no longer match a node",
+            "",
+            "These `[Entry] Node` lines in dismech's `kb/node_classes/pathograph_node_classes.txt`",
+            "name a node the entry no longer has, usually because the node was renamed.",
+            "Update the tree line to the node's current name.",
+            "",
+        ]
+        lines += [f"- `[{entry}] {node}`" for entry, node in missing]
     return "\n".join(lines) + "\n"
 
 
